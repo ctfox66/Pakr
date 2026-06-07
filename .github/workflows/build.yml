@@ -2,10 +2,6 @@ name: Build APK
 on:
   workflow_dispatch:
     inputs:
-      build_id:
-        description: Unique build ID
-        required: false
-        default: ""
       app_url:
         description: Target URL
         required: true
@@ -20,13 +16,9 @@ on:
         required: true
         default: 1.0.0
       icon_url:
-        description: Icon Image URL
+        description: Icon Image URL (optional, leave empty to use repo logo.jpg)
         required: false
-        default: ""
-      no_screenshot:
-        description: Disable screenshot (true/false)
-        required: false
-        default: "false"
+        default: ''
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -52,41 +44,38 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
-      - name: Install Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.2'
-
       - name: Inject parameters
         run: |
-          # fix(bug#2): 对 URL 中的 sed 特殊字符做转义，防止注入崩溃
-          URL="${{ github.event.inputs.app_url }}"
-          URL_ESC=$(printf '%s\n' "$URL" | sed 's/[&/\]/\\&/g')
-          sed -i "s|{{APP_URL}}|${URL_ESC}|g" app/src/main/java/com/webviewapp/MainActivity.kt
-
+          sed -i 's|{{APP_URL}}|${{ github.event.inputs.app_url }}|g' app/src/main/java/com/webviewapp/MainActivity.kt
           PKG="${{ github.event.inputs.package_name }}"
           sed -i "s|{{APP_PACKAGE}}|${PKG}|g" app/src/main/AndroidManifest.xml app/build.gradle
-
           NAME="${{ github.event.inputs.app_name }}"
-          NAME_XML=$(echo "$NAME" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'"'"'/\&apos;/g')
-          sed -i "s|{{APP_NAME}}|${NAME_XML}|g" app/src/main/res/values/strings.xml app/src/main/AndroidManifest.xml
-
-          # VERSION_NAME 支持任意字符（1.0、2.0-beta、v3.1.0-rc1 等均可）
+          sed -i "s|{{APP_NAME}}|${NAME}|g" app/src/main/res/values/strings.xml app/src/main/AndroidManifest.xml
           VER="${{ github.event.inputs.version_name }}"
-          # VERSION_CODE 使用 Unix 时间戳，与版本号格式完全解耦，永远单调递增
-          VC=$(date +%s)
+          VC=$(echo "$VER" | awk -F. '{ printf "%d%02d%02d", $1, $2, $3 }')
           sed -i "s|{{VERSION_NAME}}|${VER}|g" app/build.gradle
           sed -i "s|{{VERSION_CODE}}|${VC}|g" app/build.gradle
-
-          PKG_PATH=$(echo $PKG | sed 's/\./\//g')
+          PKG_PATH=$(echo $PKG | sed 's/\.//g; s/./&\//g' | sed 's/\(.*\)\//\1/')
+          PKG_PATH=$(echo $PKG | tr '.' '/')
           echo "PKG_PATH is: $PKG_PATH"
           mkdir -p app/src/main/java/$PKG_PATH
           sed -i "s|package com.webviewapp|package $PKG|g" app/src/main/java/com/webviewapp/*.kt
           mv app/src/main/java/com/webviewapp/*.kt app/src/main/java/$PKG_PATH/
           sed -i "s|com.webviewapp|$PKG|g" app/src/main/res/layout/activity_main.xml
 
-          NO_SS="${{ github.event.inputs.no_screenshot }}"
-          sed -i "s|{{NO_SCREENSHOT}}|${NO_SS:-false}|g" app/src/main/java/$PKG_PATH/MainActivity.kt
+      - name: Ensure fallback launcher resources
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAAAWUlEQVR4nO3BAQ0AAADCoPdPbQ43oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfgx1lAABqFDyOQAAAABJRU5ErkJggg==')
+          for density in ['mdpi','hdpi','xhdpi','xxhdpi','xxxhdpi']:
+              base = f'app/src/main/res/mipmap-{density}'
+              os.makedirs(base, exist_ok=True)
+              for name in ['ic_launcher.png', 'ic_launcher_round.png']:
+                  path = os.path.join(base, name)
+                  if not os.path.exists(path) or os.path.getsize(path) < 100:
+                      open(path, 'wb').write(png)
+          PY
 
       - name: Process icon
         env:
@@ -95,16 +84,13 @@ jobs:
           pip install Pillow -q
           python3 Scripts/process_icon.py
 
-      - name: Build APK
-        # fix(bug#7): 使用 ./gradlew 而非系统 gradle，保证版本与 wrapper 一致
+      - name: Build APK (arm64 + armeabi-v7a)
         run: |
-          chmod +x gradlew
+          chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon
 
       - name: Sign APK
         run: |
-          echo "=== APK output files ==="
-          find app/build/outputs/apk -name '*.apk' 2>/dev/null || echo "No APKs found"
           KS_B64="${{ secrets.KEYSTORE_BASE64 }}"
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 --decode > /tmp/release.keystore
@@ -113,37 +99,48 @@ jobs:
             KEY_PASS="${{ secrets.KEY_PASSWORD }}"
           else
             keytool -genkey -v -keystore /tmp/release.keystore -alias debugkey -keyalg RSA -keysize 2048 -validity 3650 -storepass android -keypass android -dname "CN=Debug,O=Debug,C=US" -noprompt
-            KS_PASS="android"; KEY_ALIAS="debugkey"; KEY_PASS="android"
+            KS_PASS="android"
+            KEY_ALIAS="debugkey"
+            KEY_PASS="android"
           fi
           BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools/ | sort -V | tail -1)
-          SAFE=$(echo "${{ github.event.inputs.app_name }}" | tr ' /' '__' | LC_ALL=C tr -cd 'A-Za-z0-9_.-')
-          [ -z "$SAFE" ] && SAFE="app"
+          SAFE=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_')
           VER="${{ github.event.inputs.version_name }}"
           mkdir -p /tmp/signed
-          for APK in $(find app/build/outputs/apk -name '*.apk' 2>/dev/null); do
-            ABI=$(echo "$APK" | grep -oE 'arm64-v8a|armeabi-v7a' || echo "universal")
+          echo "=== Searching for split APK files ==="
+          find app/build -name '*.apk' 2>/dev/null || echo "No APK found in app/build"
+          FOUND=0
+          while IFS= read -r APK; do
+            [ -z "$APK" ] && continue
+            echo "Processing: $APK"
+            ABI=$(echo "$APK" | grep -oE 'arm64-v8a|armeabi-v7a' | head -1)
+            [ -z "$ABI" ] && continue
             OUT="/tmp/signed/${SAFE}_${VER}_${ABI}.apk"
-            $ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign -f -p 4 "$APK" /tmp/aligned_${ABI}.apk
-            $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner sign \
-              --ks /tmp/release.keystore --ks-pass "pass:$KS_PASS" \
-              --ks-key-alias "$KEY_ALIAS" --key-pass "pass:$KEY_PASS" \
-              --out "$OUT" /tmp/aligned_${ABI}.apk
+            $ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign -v -p 4 "$APK" /tmp/aligned_${ABI}.apk
+            $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner sign               --ks /tmp/release.keystore --ks-pass "pass:$KS_PASS"               --ks-key-alias "$KEY_ALIAS" --key-pass "pass:$KEY_PASS"               --out "$OUT" /tmp/aligned_${ABI}.apk
+            $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner verify "$OUT"
             echo "Signed: $OUT"
-          done
-          echo "APK_BASE=${SAFE}_${VER}" >> $GITHUB_ENV
-
-      - name: Upload APK arm64-v8a
+            FOUND=1
+          done < <(find app/build -type f \( -name '*arm64-v8a*release*.apk' -o -name '*armeabi-v7a*release*.apk' -o -path '*/release/*arm64-v8a*.apk' -o -path '*/release/*armeabi-v7a*.apk' \) 2>/dev/null)
+          if [ "$FOUND" -ne 1 ]; then
+            echo "No split ABI APKs found" >&2
+            exit 1
+          fi
+          ls -la /tmp/signed/
+          echo "SIGNED_DIR=/tmp/signed" >> $GITHUB_ENV
+          echo "APK_NAME=${SAFE}_${VER}" >> $GITHUB_ENV
+      - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APK_BASE }}_arm64-v8a
-          path: /tmp/signed/*arm64-v8a*.apk
-          retention-days: 7
+          name: ${{ env.APK_NAME }}_arm64-v8a
+          path: ${{ env.SIGNED_DIR }}/*arm64-v8a*.apk
           if-no-files-found: warn
+          retention-days: 7
 
-      - name: Upload APK armeabi-v7a
+      - name: Upload armeabi-v7a APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APK_BASE }}_armeabi-v7a
-          path: /tmp/signed/*armeabi-v7a*.apk
-          retention-days: 7
+          name: ${{ env.APK_NAME }}_armeabi-v7a
+          path: ${{ env.SIGNED_DIR }}/*armeabi-v7a*.apk
           if-no-files-found: warn
+          retention-days: 7
