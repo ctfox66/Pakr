@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
         // controller.systemBarsBehavior =
         //     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         setContentView(R.layout.activity_main)
+        window.statusBarColor = android.graphics.Color.parseColor("#99000000")
         webView     = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
         overlay     = findViewById(R.id.overlay)
