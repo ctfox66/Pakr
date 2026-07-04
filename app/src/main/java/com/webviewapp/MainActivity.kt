@@ -77,12 +77,8 @@ class MainActivity : AppCompatActivity() {
         //     android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         // )
         WindowCompat.setDecorFitsSystemWindows(window, true)
-        // val controller = WindowInsetsControllerCompat(window, window.decorView)
-        // controller.hide(WindowInsetsCompat.Type.systemBars())
-        // controller.systemBarsBehavior =
-        //     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         setContentView(R.layout.activity_main)
-        window.statusBarColor = android.graphics.Color.parseColor("#99000000")
         webView     = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
         overlay     = findViewById(R.id.overlay)
