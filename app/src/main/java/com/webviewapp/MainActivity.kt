@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
         //     android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
         //     android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         // )
-        // WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         // val controller = WindowInsetsControllerCompat(window, window.decorView)
         // controller.hide(WindowInsetsCompat.Type.systemBars())
         // controller.systemBarsBehavior =
