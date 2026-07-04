@@ -10,8 +10,7 @@ export default defineConfig({
   themeConfig: {
     siteTitle: 'Pakr Docs',
     nav: [
-      { text: '中文', link: '/' },
-      { text: 'English', link: '/en/' },
+      { text: '首页', link: '/' },
       { text: '在线体验', link: 'https://apk.091224.xyz' }
     ],
     sidebar: {
@@ -31,27 +30,10 @@ export default defineConfig({
             { text: '常见问题', link: '/reference/faq' }
           ]
         }
-      ],
-      '/en/': [
-        {
-          text: 'Guide',
-          items: [
-            { text: 'Introduction', link: '/en/guide/introduction' },
-            { text: 'Quick Start', link: '/en/guide/quickstart' },
-            { text: 'Deployment Notes', link: '/en/guide/deploy' }
-          ]
-        },
-        {
-          text: 'Reference',
-          items: [
-            { text: 'Features', link: '/en/reference/features' },
-            { text: 'FAQ', link: '/en/reference/faq' }
-          ]
-        }
       ]
     },
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/ZSFan888/APK' }
+      { icon: 'github', link: 'https://github.com/ZhangShengFan/Pakr' }
     ],
     outline: {
       level: [2, 3],
