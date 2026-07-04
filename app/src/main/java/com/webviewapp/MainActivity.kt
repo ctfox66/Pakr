@@ -69,18 +69,18 @@ class MainActivity : AppCompatActivity() {
             androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
         )
         super.onCreate(savedInstanceState)
-        @Suppress("DEPRECATION")
-        window.setFlags(
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
-            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
-            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        )
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        // @Suppress("DEPRECATION")
+        // window.setFlags(
+        //     android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+        //     android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        //     android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+        //     android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        // )
+        // WindowCompat.setDecorFitsSystemWindows(window, false)
+        // val controller = WindowInsetsControllerCompat(window, window.decorView)
+        // controller.hide(WindowInsetsCompat.Type.systemBars())
+        // controller.systemBarsBehavior =
+        //     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         setContentView(R.layout.activity_main)
         webView     = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
