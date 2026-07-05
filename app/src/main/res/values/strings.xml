@@ -12,5 +12,5 @@
     <string name="ua_mode_label">浏览标识 (User-Agent)</string>
     <string name="ua_mode_mobile">移动端 UA</string>
     <string name="ua_mode_desktop">桌面端 UA</string>
-    <string name="ua_mode_hint">切换后需刷新页面生效</string>
+    <string name="ua_mode_hint">切换后返回页面将自动刷新</string>
 </resources>

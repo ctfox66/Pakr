@@ -149,9 +149,15 @@ class MainActivity : AppCompatActivity() {
         }
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-                // 每次新页面/刷新必须强制显示 overlay，不受上次状态影响
                 handler.removeCallbacks(delayHideRunnable)
                 forceShowOverlay()
+                if (webView.settings.userAgentString == DESKTOP_UA) {
+                    view.evaluateJavascript("""
+                        (function(){
+                            var m = document.querySelector('meta[name=viewport]');
+                            if(m) m.content = 'width=1280, initial-scale=1.0';
+                        })();""".trimIndent(), null)
+                }
             }
 
             override fun onPageFinished(view: WebView, url: String) {
@@ -445,12 +451,18 @@ class MainActivity : AppCompatActivity() {
         edgeRight.setOnTouchListener { _, e -> rightGesture.onTouchEvent(e) }
     }
 
-    private fun applyUserAgent() {
+    private fun applyUserAgent(): Boolean {
         val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         val mode = prefs.getString(SettingsActivity.PREF_UA_MODE, SettingsActivity.UA_MODE_MOBILE)
-        webView.settings.userAgentString = when (mode) {
+        val newUA = when (mode) {
             SettingsActivity.UA_MODE_DESKTOP -> DESKTOP_UA
             else -> MOBILE_UA
+        }
+        return if (webView.settings.userAgentString != newUA) {
+            webView.settings.userAgentString = newUA
+            true
+        } else {
+            false
         }
     }
 
@@ -512,7 +524,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
-        applyUserAgent()
+        if (applyUserAgent()) {
+            handler.postDelayed({ webView.reload() }, 100)
+        }
     }
 
     override fun onPause() {
