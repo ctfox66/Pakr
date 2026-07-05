@@ -151,17 +151,12 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 handler.removeCallbacks(delayHideRunnable)
                 forceShowOverlay()
-                if (webView.settings.userAgentString == DESKTOP_UA) {
-                    view.evaluateJavascript("""
-                        (function(){
-                            var m = document.querySelector('meta[name=viewport]');
-                            if(m) m.content = 'width=1280, initial-scale=1.0';
-                        })();""".trimIndent(), null)
-                }
+                applyDesktopViewport(view)
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 swipeRefresh.isRefreshing = false
+                applyDesktopViewport(view)
                 fetchThemeColor(view)
                 handler.removeCallbacks(delayHideRunnable)
                 // 用 JS 检测页面真正渲染完成（两帧后），再隐藏 overlay
@@ -338,7 +333,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }, "_pakrBridge")
-        applyUserAgent()
+        applyBrowsingMode()
         // 实时控制：WebView 不在顶部时禁用下拉刷新，防止滚动误触和打断 CF 验证
         // 防误触：只有页面静止在顶部时才启用下拉刷新
         var lastScrollY = 0
@@ -451,19 +446,74 @@ class MainActivity : AppCompatActivity() {
         edgeRight.setOnTouchListener { _, e -> rightGesture.onTouchEvent(e) }
     }
 
-    private fun applyUserAgent(): Boolean {
+    private fun isDesktopMode(): Boolean {
         val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         val mode = prefs.getString(SettingsActivity.PREF_UA_MODE, SettingsActivity.UA_MODE_MOBILE)
-        val newUA = when (mode) {
-            SettingsActivity.UA_MODE_DESKTOP -> DESKTOP_UA
-            else -> MOBILE_UA
+        return mode == SettingsActivity.UA_MODE_DESKTOP
+    }
+
+    private fun applyBrowsingMode(): Boolean {
+        val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val uaMode = prefs.getString(SettingsActivity.PREF_UA_MODE, SettingsActivity.UA_MODE_MOBILE)
+        val desktopMode = uaMode == SettingsActivity.UA_MODE_DESKTOP
+        val newUA = if (desktopMode) DESKTOP_UA else MOBILE_UA
+
+        webView.settings.apply {
+            useWideViewPort = true
+            loadWithOverviewMode = desktopMode
+            textZoom = 100
         }
+        webView.setInitialScale(if (desktopMode) desktopInitialScalePercent() else 0)
+
         return if (webView.settings.userAgentString != newUA) {
             webView.settings.userAgentString = newUA
             true
         } else {
             false
         }
+    }
+
+    private fun desktopInitialScalePercent(): Int {
+        val screenWidthDp = resources.configuration.screenWidthDp.takeIf { it > 0 } ?: 360
+        return ((screenWidthDp * 100) / DESKTOP_VIEWPORT_WIDTH).coerceIn(25, 100)
+    }
+
+    private fun applyDesktopViewport(view: WebView) {
+        if (!isDesktopMode()) return
+        view.evaluateJavascript("""
+            (function(){
+                var content = 'width=${DESKTOP_VIEWPORT_WIDTH}, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes';
+
+                function apply(){
+                    var head = document.head || document.getElementsByTagName('head')[0];
+                    if (!head) {
+                        setTimeout(apply, 30);
+                        return;
+                    }
+
+                    var meta = document.querySelector('meta[name="viewport"]');
+                    if (!meta) {
+                        meta = document.createElement('meta');
+                        meta.setAttribute('name', 'viewport');
+                        head.appendChild(meta);
+                    }
+                    if (meta.getAttribute('content') !== content) {
+                        meta.setAttribute('content', content);
+                    }
+                }
+
+                apply();
+                if (!window.__pakrDesktopViewportObserver && window.MutationObserver && document.documentElement) {
+                    window.__pakrDesktopViewportObserver = new MutationObserver(apply);
+                    window.__pakrDesktopViewportObserver.observe(document.documentElement, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true,
+                        attributeFilter: ['content']
+                    });
+                }
+            })();
+        """.trimIndent(), null)
     }
 
     // 强制显示 overlay，不受 overlayVisible 守卫限制（用于 reload 等场景）
@@ -524,7 +574,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
-        if (applyUserAgent()) {
+        if (applyBrowsingMode()) {
             handler.postDelayed({ webView.reload() }, 100)
         }
     }
@@ -584,7 +634,7 @@ class MainActivity : AppCompatActivity() {
             fileChooserCallbackRef?.onReceiveValue(results)
             fileChooserCallbackRef = null
             cameraImageUri = null
-            applyUserAgent()
+            applyBrowsingMode()
         }
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
@@ -594,6 +644,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val APP_URL   = "{{APP_URL}}"
+        private const val DESKTOP_VIEWPORT_WIDTH = 1280
         const val MOBILE_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
         const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
         private const val FILE_CHOOSER_REQUEST = 1001
