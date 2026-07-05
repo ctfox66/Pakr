@@ -106,6 +106,9 @@ class MainActivity : AppCompatActivity() {
         showOverlay()
         setupWebView()
         setupEdgeSwipe()
+        findViewById<View>(R.id.btnSettings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -247,8 +250,11 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 fileChooserCallbackRef?.onReceiveValue(null)
                 fileChooserCallbackRef = filePathCallback
-                // 上传前切换为桌面UA，确保ChatGPT不拦截上传请求
-                webView.settings.userAgentString = DESKTOP_UA
+                val uaMode = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                    .getString(SettingsActivity.PREF_UA_MODE, SettingsActivity.UA_MODE_MOBILE) ?: SettingsActivity.UA_MODE_MOBILE
+                if (uaMode != SettingsActivity.UA_MODE_DESKTOP) {
+                    webView.settings.userAgentString = DESKTOP_UA
+                }
                 try {
                     // 创建相机临时文件
                     val photoFile = java.io.File(
@@ -326,8 +332,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }, "_pakrBridge")
-        // UA：移动版 Chrome（无 wv 标识），上传时临时切桌面UA
-        webView.settings.userAgentString = MOBILE_UA
+        applyUserAgent()
         // 实时控制：WebView 不在顶部时禁用下拉刷新，防止滚动误触和打断 CF 验证
         // 防误触：只有页面静止在顶部时才启用下拉刷新
         var lastScrollY = 0
@@ -440,6 +445,15 @@ class MainActivity : AppCompatActivity() {
         edgeRight.setOnTouchListener { _, e -> rightGesture.onTouchEvent(e) }
     }
 
+    private fun applyUserAgent() {
+        val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val mode = prefs.getString(SettingsActivity.PREF_UA_MODE, SettingsActivity.UA_MODE_MOBILE)
+        webView.settings.userAgentString = when (mode) {
+            SettingsActivity.UA_MODE_DESKTOP -> DESKTOP_UA
+            else -> MOBILE_UA
+        }
+    }
+
     // 强制显示 overlay，不受 overlayVisible 守卫限制（用于 reload 等场景）
     private fun forceShowOverlay() {
         overlayVisible = false
@@ -498,7 +512,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
-        // 切回 App 时不主动操作 overlay，让 WebView 自然恢复
+        applyUserAgent()
     }
 
     override fun onPause() {
@@ -556,8 +570,7 @@ class MainActivity : AppCompatActivity() {
             fileChooserCallbackRef?.onReceiveValue(results)
             fileChooserCallbackRef = null
             cameraImageUri = null
-            // 上传完成后恢复移动UA
-            webView.settings.userAgentString = MOBILE_UA
+            applyUserAgent()
         }
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
